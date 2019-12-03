@@ -1,0 +1,52 @@
+version: '3.7'
+
+services:
+  registry:
+    restart: unless-stopped
+    image: registry:2
+    volumes:
+      - ./registry:/var/lib/registry
+    networks:
+      - registry_net
+    labels:
+      - "traefik.http.routers.registry.rule=Host(`${REGISTRY_DOMAIN}`)"
+      - "traefik.http.routers.registry.tls=true"
+      - "traefik.http.routers.registry.tls.certresolver=le"
+      - "traefik.http.routers.registry.entrypoints=registrysecure"
+      - "traefik.http.services.registry.loadbalancer.server.port=5000"
+      - "traefik.http.routers.registry.middlewares=auth"
+      - "traefik.http.middlewares.auth.basicauth.users=${REGISTRY_USER}:${REGISTRY_PASSWORD}"
+
+  traefik:
+    image: traefik
+    restart: unless-stopped
+    ports:
+      - 80:80
+      - ${TRAEFIK_WEBDASHBOARD_PORT}:${TRAEFIK_WEBDASHBOARD_PORT}
+      - ${REGISTRY_PORT}:${REGISTRY_PORT}
+    command:
+      - --api.dashboard=true
+      - --providers.docker=true
+      #- --log.level=DEBUG
+      - --entrypoints.web.address=:80
+      - --entrypoints.webdashboardsecure.address=:${TRAEFIK_WEBDASHBOARD_PORT}
+      - --entrypoints.registrysecure.address=:${REGISTRY_PORT}
+      - --certificatesresolvers.le.acme.email=${ADMIN_EMAIL}
+      - --certificatesresolvers.le.acme.storage=acme.json
+      - --certificatesresolvers.le.acme.httpChallenge.entryPoint=web
+    networks:
+      - registry_net
+    volumes:
+      - ./acme.json:/acme.json
+      - /var/run/docker.sock:/var/run/docker.sock
+    labels:
+      - "traefik.http.routers.traefik.rule=Host(`${TRAEFIK_WEBDASHBOARD_DOMAIN}`)"
+      - "traefik.http.routers.traefik.tls=true"
+      - "traefik.http.routers.traefik.tls.certresolver=le"
+      - "traefik.http.routers.traefik.entrypoints=webdashboardsecure"
+      - "traefik.http.routers.traefik.service=api@internal"
+      - "traefik.http.routers.traefik.middlewares=admin"
+      - "traefik.http.middlewares.admin.basicauth.users=${TRAEFIK_ADMIN}:${TRAEFIK_ADMIN_PASSWORD}"
+
+networks:
+  registry_net:
